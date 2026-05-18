@@ -15,6 +15,15 @@ import plotly.graph_objects as go
 from scoring_engine import calculate_alpha_score, assess_liquidity_risk
 from report_generator import generate_report
 from peer_comparison import compare_ipo_to_sector
+from payment_gateway import create_checkout_session, verify_payment, check_stripe_config, get_publishable_key, DEFAULT_PRICE_RM
+
+# --- Stripe / payment state ---
+if 'payment_session' not in st.session_state:
+    st.session_state.payment_session = None
+if 'payment_ticker' not in st.session_state:
+    st.session_state.payment_ticker = None
+if 'payment_verified' not in st.session_state:
+    st.session_state.payment_verified = {}
 from report_generator import generate_ipo_report
 
 BOT_DIR = Path(__file__).parent
@@ -394,23 +403,108 @@ def render_card(ipo: dict, scores_list: list[dict]):
             st.success(f" {company_name} re-scored: {result['total_score']:.1f}/100 → {result['verdict']}")
             st.rerun()
 
+        # --- Buy Report with Stripe payment ---
         report_key = f'report_{ipo.get("company_name", "")}_{ipo.get("ticker", "")}'
-        if st.button(" Buy Report", key=report_key, help="Generate institutional-grade 30-page PDF report"):
-            with st.spinner("Generating institutional research report..."):
-                try:
-                    pdf_path = generate_report(ticker=ipo.get('ticker', ''))
-                    with open(pdf_path, "rb") as f:
-                        pdf_bytes = f.read()
-                    st.success(" Report generated!")
-                    st.download_button(
-                        label=" Download Report (PDF)",
-                        data=pdf_bytes,
-                        file_name=f'{ipo.get("ticker", "")}_Research_Report.pdf',
-                        mime="application/pdf",
-                        key=f"dl_{report_key}",
-                    )
-                except Exception as e:
-                    st.error(f"Report generation failed: {e}")
+        ticker = ipo.get('ticker', '')
+        company = ipo.get('company_name', '')
+        
+        # Check if already paid this session
+        already_paid = st.session_state.payment_verified.get(ticker, False)
+        
+        if already_paid:
+            # Already paid — show download directly
+            if st.button(" Download Report", key=f'dl_paid_{report_key}', help="Download your paid report"):
+                with st.spinner("Generating report..."):
+                    try:
+                        pdf_path = generate_report(ticker=ticker)
+                        with open(pdf_path, "rb") as f:
+                            pdf_bytes = f.read()
+                        st.success(" Here's your report!")
+                        st.download_button(
+                            label=" Save PDF",
+                            data=pdf_bytes,
+                            file_name=f'{ticker}_Research_Report.pdf',
+                            mime="application/pdf",
+                            key=f'dl_save_{report_key}',
+                        )
+                    except Exception as e:
+                        st.error(f"Report generation failed: {e}")
+        else:
+            # Check if payment just completed (returned from Stripe)
+            query_params = st.query_params
+            if query_params.get('payment') == 'success' and query_params.get('session_id', '') and query_params.get('ticker', '') == ticker:
+                session_id = query_params['session_id']
+                with st.spinner("Verifying payment..."):
+                    result = verify_payment(session_id)
+                    if result.get('verified'):
+                        st.session_state.payment_verified[ticker] = True
+                        st.success(f" Payment confirmed! Thank you for your purchase.")
+                        # Generate and show download
+                        try:
+                            pdf_path = generate_report(ticker=ticker)
+                            with open(pdf_path, "rb") as f:
+                                pdf_bytes = f.read()
+                            st.download_button(
+                                label=" Download Your Report (PDF)",
+                                data=pdf_bytes,
+                                file_name=f'{ticker}_Research_Report.pdf',
+                                mime="application/pdf",
+                                key=f'dl_paid_{report_key}',
+                                type='primary',
+                            )
+                        except Exception as e:
+                            st.error(f"Report generation failed: {e}")
+                    else:
+                        st.warning("Payment verification pending. Please try again or contact support.")
+            
+            # Show Buy button or payment link
+            stripe_ok, stripe_msg = check_stripe_config()
+            if stripe_ok:
+                col_price = st.columns([3, 1])
+                with col_price[0]:
+                    if st.button(f"' Buy Report (RM{DEFAULT_PRICE_RM})", key=report_key,
+                                help="Purchase 30-page institutional PDF report"):
+                        from urllib.parse import urlencode
+                        base_url = query_params.get('origin', 'http://localhost:8501')
+                        if 'localhost' in base_url or '://' not in base_url:
+                            base_url = 'http://localhost:8501'
+                        success_url = f'{base_url}/?payment=success&session_id={{"CHECKOUT_SESSION_ID"}}&ticker={ticker}'
+                        cancel_url = f'{base_url}/'
+                        session = create_checkout_session(ipo, success_url, cancel_url)
+                        if session:
+                            st.markdown(f'''
+                                <a href="{session.url}" target="_blank">
+                                    <button style="background:#e94560;color:white;border:none;padding:8px 20px;
+                                    border-radius:6px;font-size:14px;cursor:pointer;">
+                                    ' Pay RM{DEFAULT_PRICE_RM} via Card/FPX
+                                    </button>
+                                </a>
+                            ''', unsafe_allow_html=True)
+                            st.caption("Secure payment via Stripe. Card, FPX, GrabPay accepted.")
+                        else:
+                            st.error("Payment service unavailable. Try again later.")
+                with col_price[1]:
+                    st.caption(f"RM{DEFAULT_PRICE_RM}")
+            else:
+                # Stripe not configured — show free demo version
+                if st.button(f" Preview Report (FREE)", key=report_key,
+                            help="Generate a free preview report"):
+                    with st.spinner("Generating preview..."):
+                        try:
+                            pdf_path = generate_report(ticker=ticker)
+                            with open(pdf_path, "rb") as f:
+                                pdf_bytes = f.read()
+                            st.success(" Preview ready!")
+                            st.info("Note: For the full 30-page report, configure Stripe payment.")
+                            st.download_button(
+                                label=" Download Preview",
+                                data=pdf_bytes,
+                                file_name=f'{ticker}_Research_Preview.pdf',
+                                mime="application/pdf",
+                                key=f'dl_free_{report_key}',
+                            )
+                        except Exception as e:
+                            st.error(f"Report generation failed: {e}")
 
         render_ipo_detail(ipo)
 
