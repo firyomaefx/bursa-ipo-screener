@@ -1,30 +1,20 @@
 """
-🇲🇾 Bursa Malaysia IPO Alpha Screener — Streamlit Dashboard
-
-Phase 3: Monetizable web dashboard with:
-  - Overview (KPI cards, verdict distribution, top picks)
-  - IPO List (filterable table, score breakdown, peer comparison)
-  - Sector Analysis (sector heatmap, average scores)
-  - New Scan (trigger analysis from scraped IPOs)
-
-Deploy: streamlit run dashboard.py
+Bursa Malaysia IPO Alpha Screener — Single-Page Dashboard
 """
 
 import os
 import sys
 import json
-import tempfile
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-# ── Path setup ──────────────────────────────────────────────────────────────
+from scoring_engine import calculate_alpha_score, assess_liquidity_risk
+from peer_comparison import compare_ipo_to_sector
+
 BOT_DIR = Path(__file__).parent
 DATA_DIR = BOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -32,20 +22,13 @@ SCORES_DB = BOT_DIR / "ipo_scores.json"
 
 sys.path.insert(0, str(BOT_DIR))
 
-from scoring_engine import calculate_alpha_score, assess_liquidity_risk
-from peer_comparison import compare_ipo_to_sector, full_pipeline_with_peers
-from scraper_integration import batch_scrape_all
-
-
-# ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Bursa IPO Alpha Screener",
-    page_icon="🇲🇾",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Colors ──────────────────────────────────────────────────────────────────
 BURSA_BLUE = "#003B6F"
 BURSA_GOLD = "#C8A951"
 VERDICT_BUY = "#27AE60"
@@ -59,8 +42,6 @@ VERDICT_COLORS = {
     "AVOID": VERDICT_AVOID,
 }
 
-
-# ── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown(
     f"""
 <style>
@@ -98,6 +79,14 @@ st.markdown(
 
     .score-gauge-container {{ display: flex; justify-content: center; margin: 1rem 0; }}
 
+    .badge {{
+        display: inline-block;
+        border-radius: 6px;
+        padding: 0.15rem 0.6rem;
+        font-size: 0.85rem;
+        font-weight: 700;
+    }}
+
     .footer {{
         text-align: center;
         color: #95A5A6;
@@ -112,10 +101,7 @@ st.markdown(
 )
 
 
-# ── Data helpers ────────────────────────────────────────────────────────────
-
 def load_scores() -> list[dict]:
-    """Load all scored IPOs from JSON storage."""
     if SCORES_DB.exists():
         try:
             return json.loads(SCORES_DB.read_text())
@@ -125,12 +111,10 @@ def load_scores() -> list[dict]:
 
 
 def save_scores(scores: list[dict]):
-    """Persist scored IPOs to JSON."""
     SCORES_DB.write_text(json.dumps(scores, indent=2, default=str))
 
 
 def prepare_df(scores: list[dict]) -> pd.DataFrame:
-    """Convert IPO score dicts to a flat DataFrame for display."""
     rows = []
     for s in scores:
         row = {
@@ -159,10 +143,7 @@ def prepare_df(scores: list[dict]) -> pd.DataFrame:
     return df
 
 
-# ── Components ──────────────────────────────────────────────────────────────
-
 def kpi_card(label: str, value: str, sub: str = "", color: str = BURSA_GOLD):
-    """Render a KPI metric card."""
     st.markdown(
         f"""
         <div class="kpi-card" style="border-left-color: {color};">
@@ -176,7 +157,6 @@ def kpi_card(label: str, value: str, sub: str = "", color: str = BURSA_GOLD):
 
 
 def score_gauge(score: float) -> go.Figure:
-    """Create a Plotly gauge chart for the alpha score."""
     if score >= 70:
         color = VERDICT_BUY
         verdict = "BUY"
@@ -220,7 +200,6 @@ def score_gauge(score: float) -> go.Figure:
 
 
 def score_breakdown_chart(breakdown: dict) -> go.Figure:
-    """Horizontal bar chart of per-criteria scores."""
     names = list(breakdown.keys())
     scores = [b.get("score", 0) for b in breakdown.values()]
     max_scores = [15, 15, 15, 15, 10, 15, 10]
@@ -251,89 +230,22 @@ def score_breakdown_chart(breakdown: dict) -> go.Figure:
     return fig
 
 
-def verdict_distribution(scores: list[dict]) -> go.Figure:
-    """Pie chart of verdict distribution."""
-    counts = {"BUY": 0, "NEUTRAL": 0, "AVOID": 0}
-    for s in scores:
-        v = s.get("verdict", "N/A")
-        if v in counts:
-            counts[v] += 1
-
-    labels = [k for k, v in counts.items() if v > 0]
-    values = [v for v in counts.values() if v > 0]
-    colors_pie = [VERDICT_COLORS.get(l, "#95A5A6") for l in labels]
-
-    fig = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        marker=dict(colors=colors_pie, line=dict(color="white", width=2)),
-        textinfo="label+percent",
-        textfont=dict(size=13, color="white"),
-        hole=0.45,
-    )])
-    fig.update_layout(
-        title="Verdict Distribution",
-        height=300,
-        margin=dict(l=10, r=10, t=30, b=10),
-        paper_bgcolor="white",
-        font=dict(color=BURSA_BLUE, size=12),
-        showlegend=False,
-    )
-    return fig
-
-
-def sector_score_chart(df: pd.DataFrame) -> go.Figure:
-    """Bar chart of average alpha score by sector."""
-    if df.empty or "Sector" not in df.columns:
-        return go.Figure()
-
-    sector_avg = df.groupby("Sector")["Alpha Score"].mean().reset_index()
-    sector_avg = sector_avg.sort_values("Alpha Score", ascending=True)
-
-    colors_bar = [VERDICT_BUY if s >= 70 else VERDICT_NEUTRAL if s >= 50 else VERDICT_AVOID
-                  for s in sector_avg["Alpha Score"]]
-
-    fig = go.Figure(data=[go.Bar(
-        y=sector_avg["Sector"],
-        x=sector_avg["Alpha Score"],
-        orientation="h",
-        marker_color=colors_bar,
-        text=sector_avg["Alpha Score"].round(1),
-        textposition="outside",
-        textfont=dict(size=10),
-    )])
-    fig.update_layout(
-        title="Average Alpha Score by Sector",
-        xaxis=dict(title="Avg Alpha Score", range=[0, 100], showgrid=True, gridcolor="#ECF0F1"),
-        yaxis=dict(title="", autorange="reversed"),
-        height=400,
-        margin=dict(l=10, r=40, t=30, b=10),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        font=dict(color=BURSA_BLUE, size=11),
-    )
-    return fig
-
-
 def render_ipo_detail(ipo: dict):
-    """Render full detail view for a selected IPO."""
     score_val = ipo.get("alpha_score") or ipo.get("total_score", 0)
     breakdown = ipo.get("score_breakdown") or ipo.get("breakdown", {})
     quality = ipo.get("data_quality", "")
 
-    st.subheader(f"📋 {ipo.get('company_name', 'Unknown')}")
+    st.subheader(f" {ipo.get('company_name', 'Unknown')}")
 
-    # Quality badge
     if quality:
         q_color = {"HIGH": "#27AE60", "MEDIUM": "#F39C12", "LOW": "#E74C3C"}.get(quality, "#95A5A6")
         st.markdown(
             f"<div style='background:{q_color}15;border:1px solid {q_color};border-radius:6px;"
             f"padding:0.3rem 0.8rem;margin-bottom:0.5rem;display:inline-block;font-size:0.85rem;'>"
-            f"📊 <b>Data Quality:</b> <span style='color:{q_color};font-weight:700;'>{quality}</span></div>",
+            f" <b>Data Quality:</b> <span style='color:{q_color};font-weight:700;'>{quality}</span></div>",
             unsafe_allow_html=True,
         )
 
-    # Gauge + quick stats
     col1, col2, col3 = st.columns([1.5, 1, 1])
     with col1:
         gauge = score_gauge(score_val)
@@ -347,7 +259,7 @@ def render_ipo_detail(ipo: dict):
         pe = ipo.get('pe_ratio') or 'N/A'
         st.markdown(f"**P/E:** {pe}")
         shariah = ipo.get('shariah_compliant')
-        shariah_str = '✅ Yes' if shariah else ('❌ No' if shariah is False else '❓ Unknown')
+        shariah_str = ' Yes' if shariah else (' No' if shariah is False else ' Unknown')
         st.markdown(f"**Shariah:** {shariah_str}")
 
     with col3:
@@ -361,19 +273,16 @@ def render_ipo_detail(ipo: dict):
         st.markdown(f"**Total Shares:** {ipo.get('total_shares', 0):,}")
         st.markdown(f"**Status:** {ipo.get('application_status', 'N/A')}")
 
-    # Warn if data-limited
     if quality == "LOW":
-        st.warning("⚠️ Limited data available — score is conservative. Add fundamental data for better accuracy.")
+        st.warning(" Limited data available — score is conservative. Add fundamental data for better accuracy.")
     elif quality == "MEDIUM":
-        st.info("ℹ️ Moderate data available — some scoring criteria use neutral defaults.")
+        st.info(" Moderate data available — some scoring criteria use neutral defaults.")
 
-    # Score breakdown chart
     if breakdown:
         st.plotly_chart(score_breakdown_chart(breakdown), use_container_width=True)
 
-    # Peer comparison
     st.markdown("---")
-    st.subheader("📊 Peer Comparison")
+    st.subheader(" Peer Comparison")
     try:
         peer_result = compare_ipo_to_sector(ipo)
         col_p1, col_p2 = st.columns([1, 1])
@@ -406,14 +315,13 @@ def render_ipo_detail(ipo: dict):
             st.markdown("")
             if peer_result.get("peer_insights"):
                 for insight in peer_result["peer_insights"]:
-                    st.markdown(f"💡 {insight}")
+                    st.markdown(f" {insight}")
 
     except Exception as e:
         st.warning(f"Peer comparison unavailable: {e}")
 
-    # Liquidity risk
     st.markdown("---")
-    st.subheader("💧 Liquidity Risk Assessment")
+    st.subheader(" Liquidity Risk Assessment")
     try:
         risk = assess_liquidity_risk(
             ipo.get("market", "N/A"),
@@ -429,14 +337,60 @@ def render_ipo_detail(ipo: dict):
         st.warning(f"Liquidity assessment unavailable: {e}")
 
 
+def render_card(ipo: dict, scores_list: list[dict]):
+    score_val = ipo.get("alpha_score") or ipo.get("total_score", 0)
+    verdict = ipo.get("verdict", "N/A")
+    color = VERDICT_COLORS.get(verdict, "#95A5A6")
 
+    company_name = ipo.get("company_name", "Unknown")
+    ticker = ipo.get("ticker", "")
 
-# ── Sidebar ─────────────────────────────────────────────────────────────────
+    label_parts = [f" {company_name}"]
+    if ticker:
+        label_parts.append(f"[{ticker}]")
+    label_parts.append(f" — {ipo.get('sector', 'N/A')}")
+    label_parts.append(f"  |  Alpha: {score_val:.0f}/100")
+    label_parts.append(f"  [{verdict}]")
+
+    expander_label = "".join(label_parts)
+
+    with st.expander(expander_label, expanded=False):
+        st.markdown(
+            f"""
+            <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem;">
+                <span class="badge" style="background:{color}15; border:1px solid {color}; color:{color};">
+                    {score_val:.0f}/100
+                </span>
+                <span class="badge" style="background:{color}15; border:1px solid {color}; color:{color};">
+                    {verdict}
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        refresh_key = f"refresh_{company_name}_{ticker or 'no_ticker'}"
+        if st.button(" Refresh Data", key=refresh_key, help="Re-score this IPO with current data", use_container_width=True):
+            result = calculate_alpha_score(ipo)
+            ipo["alpha_score"] = result["total_score"]
+            ipo["verdict"] = result["verdict"]
+            ipo["score_breakdown"] = result["breakdown"]
+
+            for i, s in enumerate(scores_list):
+                if s.get("company_name") == company_name:
+                    scores_list[i] = ipo
+                    break
+            save_scores(scores_list)
+            st.success(f" {company_name} re-scored: {result['total_score']:.1f}/100 → {result['verdict']}")
+            st.rerun()
+
+        render_ipo_detail(ipo)
+
 
 st.sidebar.markdown(
     f"""
     <div style="text-align:center; padding: 0.5rem 0;">
-        <h1 style="font-size:1.5rem; margin:0;">🇲🇾 Bursa IPO</h1>
+        <h1 style="font-size:1.5rem; margin:0;"> Bursa IPO</h1>
         <p style="color:{BURSA_GOLD}; font-weight:600; margin:0;">Alpha Screener</p>
         <hr style="margin:1rem 0; border-color:#ECF0F1;">
     </div>
@@ -447,8 +401,7 @@ st.sidebar.markdown(
 scores = load_scores()
 df = prepare_df(scores)
 
-# Sidebar stats
-st.sidebar.markdown("### 📊 Database")
+st.sidebar.markdown("### Database")
 st.sidebar.metric("Total IPOs", len(scores))
 if not df.empty:
     buy_count = len(df[df["Verdict"] == "BUY"])
@@ -460,191 +413,29 @@ if not df.empty:
     st.sidebar.metric("AVOID", avoid_count)
     st.sidebar.metric("Avg Alpha Score", f"{avg_score:.1f}")
 
-# Navigation
-st.sidebar.markdown("### 🧭 Navigation")
-page = st.sidebar.radio(
-    "Go to",
-    ["📈 Overview", "📋 IPO Browser", "🏭 Sector Analysis"],
-    label_visibility="collapsed",
-)
-
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     f'<div style="text-align:center;font-size:0.75rem;color:#95A5A6;">'
-    f'v1.0.0 · {datetime.now().strftime("%b %Y")}</div>',
+    f'v2.0.0 · {datetime.now().strftime("%b %Y")}</div>',
     unsafe_allow_html=True,
 )
 
 
-# ── Pages ───────────────────────────────────────────────────────────────────
-
-if page == "📈 Overview":
-    st.title("🇲🇾 Bursa Malaysia IPO Alpha Screener")
-    st.markdown("*Automated pre-listing valuation and scoring for Malaysian IPOs*")
-
-    if not scores:
-        st.info("📭 No IPOs loaded yet. Go to **📋 IPO Browser** to fetch live Bursa listings.")
-    else:
-        # KPI row
-        k1, k2, k3, k4, k5 = st.columns(5)
-        with k1:
-            kpi_card("Total IPOs", str(len(scores)), f"Database total")
-        with k2:
-            kpi_card("BUY Signals", str(buy_count), f"{buy_count / len(scores) * 100:.0f}% of total", VERDICT_BUY)
-        with k3:
-            kpi_card("NEUTRAL", str(neutral_count), f"{neutral_count / len(scores) * 100:.0f}% of total", VERDICT_NEUTRAL)
-        with k4:
-            kpi_card("AVOID", str(avoid_count), f"{avoid_count / len(scores) * 100:.0f}% of total", VERDICT_AVOID)
-        with k5:
-            kpi_card("Avg Score", f"{avg_score:.1f}", "across all IPOs", BURSA_BLUE)
-
-        st.markdown("---")
-
-        # Verdict distribution + top picks
-        col_a, col_b = st.columns([1, 1.5])
-
-        with col_a:
-            fig_pie = verdict_distribution(scores)
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-        with col_b:
-            st.subheader("🏆 Top 3 Picks (Highest Alpha)")
-            top3 = df.head(3)
-            for _, row in top3.iterrows():
-                color = VERDICT_COLORS.get(row["Verdict"], "#95A5A6")
-                st.markdown(
-                    f"""
-                    <div style="background:white; border-radius:8px; padding:0.6rem 1rem; margin:0.3rem 0;
-                                border-left:4px solid {color}; box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-                        <b>{row['Company']}</b> <span style="color:{color};font-weight:700;">[{row['Verdict']}]</span>
-                        <span style="float:right;font-weight:700;">{row['Alpha Score']:.0f}/100</span><br>
-                        <span style="font-size:0.8rem;color:#7F8C8D;">
-                            {row['Sector']} · {row['Market']} · RM{row['Offer Price']:.2f}
-                        </span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("---")
-
-        # Sector overview
-        if not df.empty and "Sector" in df.columns:
-            fig_sector = sector_score_chart(df)
-            st.plotly_chart(fig_sector, use_container_width=True)
-
-        # Recent additions
-        st.markdown("---")
-        st.subheader("📜 Recently Added")
-        recent = df.head(10)[["Company", "Market", "Sector", "Alpha Score", "Verdict"]]
-        st.dataframe(recent, hide_index=True, use_container_width=True)
+if "show_add_form" not in st.session_state:
+    st.session_state.show_add_form = False
 
 
-elif page == "📋 IPO Browser":
-    st.title("🇲🇾 Bursa IPO Browser")
+st.title(" Bursa Malaysia IPO Browser")
+st.markdown("*Automated pre-listing valuation and scoring for Malaysian IPOs*")
 
-    # ── Cache wrapper for batch scraping ──
-    @st.cache_data(ttl=300, show_spinner="🔍 Scraping Bursa Malaysia IPO listings...")
-    def get_live_bursa_ipos():
-        return batch_scrape_all(limit=100)
+col_add, _ = st.columns([1, 3])
+with col_add:
+    if st.button(" Add New IPO", type="primary", use_container_width=True):
+        st.session_state.show_add_form = not st.session_state.show_add_form
 
-    # Refresh button + status bar
-    col_r1, col_r2 = st.columns([1, 3])
-    with col_r1:
-        if st.button("🔄 Refresh from Bursa", type="primary", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-
-    # Load data
-    bursa_listings = get_live_bursa_ipos()
-    all_ipos = list(bursa_listings)
-
-    # Merge manual entries not already in Bursa data
-    bursa_names = {i["company_name"].lower().strip() for i in bursa_listings}
-    for s in scores:
-        if s.get("company_name", "").lower().strip() not in bursa_names:
-            s["data_quality"] = s.get("data_quality", "MANUAL")
-            all_ipos.append(s)
-
-    with col_r2:
-        st.caption(f"📡 {len(bursa_listings)} live Bursa listings · {len(all_ipos) - len(bursa_listings)} manual entries")
-
-    if not all_ipos:
-        st.info("📭 No IPO listings found. Try **Refresh from Bursa** or add manually below.")
-    else:
-        # ── Filters ──
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-        with col_f1:
-            verdict_opts = sorted({i.get("verdict", "N/A") for i in all_ipos})
-            verdict_filter = st.multiselect("Verdict", verdict_opts, default=verdict_opts)
-        with col_f2:
-            sectors = sorted({i.get("sector", "N/A") for i in all_ipos})
-            sector_filter = st.multiselect("Sector", sectors, default=sectors)
-        with col_f3:
-            markets = sorted({i.get("market", "N/A") for i in all_ipos})
-            market_filter = st.multiselect("Market", markets, default=markets)
-        with col_f4:
-            search = st.text_input("🔍 Search Company", placeholder="Type name...")
-
-        # Apply filters
-        filtered = all_ipos
-        if verdict_filter:
-            filtered = [i for i in filtered if i.get("verdict", "N/A") in verdict_filter]
-        if sector_filter:
-            filtered = [i for i in filtered if i.get("sector", "N/A") in sector_filter]
-        if market_filter:
-            filtered = [i for i in filtered if i.get("market", "N/A") in market_filter]
-        if search:
-            q = search.lower()
-            filtered = [i for i in filtered if q in i.get("company_name", "").lower()]
-
-        st.caption(f"Showing {len(filtered)} of {len(all_ipos)} IPOs")
-
-        # ── Display as cards ──
-        DQ_COLORS = {"HIGH": "#27AE60", "MEDIUM": "#F39C12", "LOW": "#E74C3C", "MANUAL": "#3498DB"}
-
-        for ipo in filtered:
-            score_val = ipo.get("total_score") or ipo.get("alpha_score", 0)
-            verdict = ipo.get("verdict", "N/A")
-            quality = ipo.get("data_quality", "LOW")
-            color = VERDICT_COLORS.get(verdict, "#95A5A6")
-            q_color = DQ_COLORS.get(quality, "#95A5A6")
-
-            # Build compact label
-            label = f"🏷️ {ipo.get('company_name', 'Unknown')}"
-            label += f" — [{verdict}]  {score_val:.0f}/100"
-            if ipo.get("ticker"):
-                label = f"{ipo.get('ticker', '')} | {label}"
-
-            with st.expander(label):
-                # Quality + Score badges in header row
-                col_h1, col_h2 = st.columns([1, 3])
-                with col_h1:
-                    st.markdown(
-                        f"""<div style='display:flex;gap:0.5rem;'>
-                            <div style='background:{color}15;border:1px solid {color};border-radius:6px;
-                                       padding:0.2rem 0.6rem;font-size:0.85rem;font-weight:700;color:{color};'>
-                                {score_val:.0f}/100</div>
-                            <div style='background:{q_color}15;border:1px solid {q_color};border-radius:6px;
-                                       padding:0.2rem 0.6rem;font-size:0.85rem;font-weight:700;color:{q_color};'>
-                                {quality}</div>
-                        </div>""",
-                        unsafe_allow_html=True,
-                    )
-                with col_h2:
-                    st.markdown(f"""
-                    **{ipo.get('sector', 'N/A')}** · {ipo.get('market', 'N/A')} · RM{ipo.get('offer_price', 0):.2f}
-                    """)
-
-                # Main detail
-                render_ipo_detail(ipo)
-
-    st.markdown("---")
-
-    # ── Manual entry (collapsed) ──
-    with st.expander("➕ Add IPO Manually (for IPOs the scraper missed)"):
-        from scoring_engine import calculate_alpha_score
-        st.markdown("Fill in details if the scraper didn't find an IPO you know about.")
+if st.session_state.show_add_form:
+    with st.expander(" Add New IPO", expanded=True):
+        st.markdown("Fill in details to add a new IPO to the database.")
         with st.form("manual_ipo_form"):
             col1, col2 = st.columns(2)
             with col1:
@@ -671,7 +462,7 @@ elif page == "📋 IPO Browser":
                 promoter_pct = st.number_input("Promoter Ownership %", min_value=0.0, max_value=100.0, step=1.0, format="%.1f", key="m_prom")
                 status = st.selectbox("Application Status", ["Open", "Closing", "Listed", "Pending"], key="m_status")
 
-            submitted = st.form_submit_button("📊 Score & Save", type="primary", use_container_width=True)
+            submitted = st.form_submit_button(" Score & Save", type="primary", use_container_width=True)
             if submitted:
                 if not company.strip():
                     st.error("Company name is required!")
@@ -696,96 +487,60 @@ elif page == "📋 IPO Browser":
                     ipo_data["verdict"] = result["verdict"]
                     ipo_data["score_breakdown"] = result["breakdown"]
 
-                    scores = load_scores()
-                    existing_names = {s.get("company_name", "").lower().strip() for s in scores}
+                    existing_scores = load_scores()
+                    existing_names = {s.get("company_name", "").lower().strip() for s in existing_scores}
                     if company.lower().strip() in existing_names:
-                        st.error(f"⚠️ {company} is already in the database!")
+                        st.error(f" {company} is already in the database!")
                     else:
-                        scores.append(ipo_data)
-                        save_scores(scores)
-                        st.success(f"✅ {company} scored! Alpha: {result['total_score']:.1f}/100 → **{result['verdict']}**")
+                        existing_scores.append(ipo_data)
+                        save_scores(existing_scores)
+                        st.success(f" {company} scored! Alpha: {result['total_score']:.1f}/100 → **{result['verdict']}**")
                         st.balloons()
+                        st.session_state.show_add_form = False
+                        st.rerun()
 
 
-elif page == "🏭 Sector Analysis":
-    st.title("🏭 Sector Analysis")
+if not scores:
+    st.info(" No IPOs yet. Click **'Add New IPO'** to get started.")
+else:
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+    with col_f1:
+        verdict_opts = sorted({s.get("verdict", "N/A") for s in scores})
+        verdict_filter = st.multiselect("Verdict", verdict_opts, default=verdict_opts)
+    with col_f2:
+        sectors = sorted({s.get("sector", "N/A") for s in scores})
+        sector_filter = st.multiselect("Sector", sectors, default=sectors)
+    with col_f3:
+        markets = sorted({s.get("market", "N/A") for s in scores})
+        market_filter = st.multiselect("Market", markets, default=markets)
+    with col_f4:
+        search = st.text_input(" Search Company", placeholder="Type name...")
 
-    if not scores:
-        st.info("📭 No IPOs in database yet.")
+    filtered = scores
+    if verdict_filter:
+        filtered = [i for i in filtered if i.get("verdict", "N/A") in verdict_filter]
+    if sector_filter:
+        filtered = [i for i in filtered if i.get("sector", "N/A") in sector_filter]
+    if market_filter:
+        filtered = [i for i in filtered if i.get("market", "N/A") in market_filter]
+    if search:
+        q = search.lower()
+        filtered = [i for i in filtered if q in i.get("company_name", "").lower()]
+
+    st.caption(f"Showing {len(filtered)} of {len(scores)} IPOs")
+
+    if not filtered:
+        st.info(" No IPOs match the current filters. Try adjusting your selection.")
     else:
-        col_s1, col_s2 = st.columns([1, 1])
+        for ipo in filtered:
+            render_card(ipo, scores)
 
-        with col_s1:
-            fig_sector = sector_score_chart(df)
-            st.plotly_chart(fig_sector, use_container_width=True)
-
-        with col_s2:
-            st.subheader("Sector Snapshot")
-            if not df.empty:
-                sector_stats = df.groupby("Sector").agg(
-                    Count=("Company", "count"),
-                    Avg_Score=("Alpha Score", "mean"),
-                    BUY=("Verdict", lambda x: (x == "BUY").sum()),
-                    NEUTRAL=("Verdict", lambda x: (x == "NEUTRAL").sum()),
-                    AVOID=("Verdict", lambda x: (x == "AVOID").sum()),
-                ).reset_index().sort_values("Avg_Score", ascending=False)
-                sector_stats.columns = ["Sector", "Count", "Avg Score", "BUY", "NEUTRAL", "AVOID"]
-                st.dataframe(sector_stats, hide_index=True, use_container_width=True)
-
-        st.markdown("---")
-
-        # Score distribution by sector
-        st.subheader("Score Distribution by Sector")
-        fig_box = px.box(
-            df, x="Sector", y="Alpha Score",
-            color="Sector",
-            color_discrete_sequence=px.colors.qualitative.Set2,
-            points="all",
-        )
-        fig_box.update_layout(
-            height=400,
-            margin=dict(l=10, r=10, t=10, b=10),
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-            font=dict(color=BURSA_BLUE),
-            showlegend=False,
-            xaxis_title="",
-        )
-        st.plotly_chart(fig_box, use_container_width=True)
-
-        # Market breakdown
-        st.markdown("---")
-        st.subheader("Market Breakdown")
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            market_count = df["Market"].value_counts().reset_index()
-            market_count.columns = ["Market", "Count"]
-            fig_market = px.bar(
-                market_count, x="Market", y="Count",
-                color="Market",
-                color_discrete_sequence=[BURSA_BLUE, BURSA_GOLD, "#7F8C8D"],
-                text="Count",
-            )
-            fig_market.update_layout(
-                height=250, showlegend=False,
-                paper_bgcolor="white", plot_bgcolor="white",
-                font=dict(color=BURSA_BLUE),
-            )
-            st.plotly_chart(fig_market, use_container_width=True)
-
-        with col_m2:
-            market_avg = df.groupby("Market")["Alpha Score"].mean().reset_index()
-            market_avg.columns = ["Market", "Avg Alpha Score"]
-            st.dataframe(market_avg, hide_index=True, use_container_width=True)
-
-
-# ── Footer ──────────────────────────────────────────────────────────────────
 st.markdown(
     f"""
     <div class="footer">
         Bursa IPO Alpha Screener · AI-powered analysis · Not financial advice<br>
         Data sourced from Bursa Malaysia, KLSE Screener & IPOWatch<br>
-        v1.0.0 | Built with Streamlit + Plotly
+        v2.0.0 | Built with Streamlit + Plotly
     </div>
     """,
     unsafe_allow_html=True,
