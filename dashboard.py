@@ -13,7 +13,9 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from scoring_engine import calculate_alpha_score, assess_liquidity_risk
+from report_generator import generate_report
 from peer_comparison import compare_ipo_to_sector
+from report_generator import generate_ipo_report
 
 BOT_DIR = Path(__file__).parent
 DATA_DIR = BOT_DIR / "data"
@@ -391,6 +393,24 @@ def render_card(ipo: dict, scores_list: list[dict]):
             save_scores(scores_list)
             st.success(f" {company_name} re-scored: {result['total_score']:.1f}/100 → {result['verdict']}")
             st.rerun()
+
+        report_key = f'report_{ipo.get("company_name", "")}_{ipo.get("ticker", "")}'
+        if st.button(" Buy Report", key=report_key, help="Generate institutional-grade 30-page PDF report"):
+            with st.spinner("Generating institutional research report..."):
+                try:
+                    pdf_path = generate_report(ticker=ipo.get('ticker', ''))
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+                    st.success(" Report generated!")
+                    st.download_button(
+                        label=" Download Report (PDF)",
+                        data=pdf_bytes,
+                        file_name=f'{ipo.get("ticker", "")}_Research_Report.pdf',
+                        mime="application/pdf",
+                        key=f"dl_{report_key}",
+                    )
+                except Exception as e:
+                    st.error(f"Report generation failed: {e}")
 
         render_ipo_detail(ipo)
 
