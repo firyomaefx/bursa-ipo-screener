@@ -249,7 +249,7 @@ def render_ipo_detail(ipo: dict):
     col1, col2, col3 = st.columns([1.5, 1, 1])
     with col1:
         gauge = score_gauge(score_val)
-        st.plotly_chart(gauge, use_container_width=True)
+        st.plotly_chart(gauge, width='stretch', key=ipo.get('company_name','unk') + '_gauge')
 
     with col2:
         st.markdown(f"**Market:** {ipo.get('market', 'N/A')}")
@@ -279,7 +279,7 @@ def render_ipo_detail(ipo: dict):
         st.info(" Moderate data available — some scoring criteria use neutral defaults.")
 
     if breakdown:
-        st.plotly_chart(score_breakdown_chart(breakdown), use_container_width=True)
+        st.plotly_chart(score_breakdown_chart(breakdown), width='stretch', key=ipo.get('company_name','unk') + '_breakdown')
 
     st.markdown("---")
     st.subheader(" Peer Comparison")
@@ -306,7 +306,7 @@ def render_ipo_detail(ipo: dict):
                 "Sector Avg": f"{peer_result['peer_sector_avg']['revenue_growth_pct']:.1f}%",
                 "Status": peer_result['comparison']['growth_comparison']
             }])
-            st.dataframe(peers_df, hide_index=True, use_container_width=True)
+            st.dataframe(peers_df, hide_index=True, width='stretch')
 
         with col_p2:
             st.markdown(f"**Peer Comparison Score:** {peer_result['comparison']['overall_score']:.0f}/100")
@@ -370,7 +370,7 @@ def render_card(ipo: dict, scores_list: list[dict]):
         )
 
         refresh_key = f"refresh_{company_name}_{ticker or 'no_ticker'}"
-        if st.button(" Refresh Data", key=refresh_key, help="Re-score this IPO with current data", use_container_width=True):
+        if st.button(" Refresh Data", key=refresh_key, help="Re-score this IPO with current data", width='stretch'):
             result = calculate_alpha_score(ipo)
             ipo["alpha_score"] = result["total_score"]
             ipo["verdict"] = result["verdict"]
@@ -430,7 +430,7 @@ st.markdown("*Automated pre-listing valuation and scoring for Malaysian IPOs*")
 
 col_add, _ = st.columns([1, 3])
 with col_add:
-    if st.button(" Add New IPO", type="primary", use_container_width=True):
+    if st.button(" Add New IPO", type="primary", width='stretch'):
         st.session_state.show_add_form = not st.session_state.show_add_form
 
 if st.session_state.show_add_form:
@@ -462,7 +462,7 @@ if st.session_state.show_add_form:
                 promoter_pct = st.number_input("Promoter Ownership %", min_value=0.0, max_value=100.0, step=1.0, format="%.1f", key="m_prom")
                 status = st.selectbox("Application Status", ["Open", "Closing", "Listed", "Pending"], key="m_status")
 
-            submitted = st.form_submit_button(" Score & Save", type="primary", use_container_width=True)
+            submitted = st.form_submit_button(" Score & Save", type="primary", width='stretch')
             if submitted:
                 if not company.strip():
                     st.error("Company name is required!")

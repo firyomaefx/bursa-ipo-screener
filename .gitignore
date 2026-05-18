@@ -8,13 +8,15 @@ venv/
 
 # Data
 data/
-ipo_scores.json
 *.log
 
 # Debug/test
 test_*.py
 debug*.py
 gen_*.py
+screenshot.py
+check_*.py
+dashboard*.png
 _find_api.py
 _qa_report.md
 plan_*.md
