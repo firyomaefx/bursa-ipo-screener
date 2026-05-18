@@ -201,7 +201,7 @@ def _prepare_fields(ipo_data: dict) -> dict:
         "cagr": ipo_data.get("revenue_cagr_3yr"),
         "shariah": ipo_data.get("shariah_compliant"),
         "mcap": float(mcap),
-        "float_pct": float(ipo_data.get("public_float_pct", 0)),
+        "float_pct": float(ipo_data.get("public_float_pct") or 0),
         "moratorium": ipo_data.get("moratorium_period_years"),
         "promoter": ipo_data.get("promoter_ownership_pct"),
     }

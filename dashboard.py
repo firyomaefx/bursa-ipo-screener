@@ -34,6 +34,7 @@ sys.path.insert(0, str(BOT_DIR))
 
 from scoring_engine import calculate_alpha_score, assess_liquidity_risk
 from peer_comparison import compare_ipo_to_sector, full_pipeline_with_peers
+from scraper_integration import batch_scrape_all
 
 
 # ── Page config ─────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ def prepare_df(scores: list[dict]) -> pd.DataFrame:
             "Rev CAGR %": s.get("revenue_cagr_3yr", None),
             "Shariah": s.get("shariah_compliant", None),
             "Public Float %": s.get("public_float_pct", 0),
-            "Alpha Score": s.get("alpha_score", 0),
+            "Alpha Score": s.get("alpha_score") or s.get("total_score", 0),
             "Verdict": s.get("verdict", "N/A"),
             "Status": s.get("application_status", "N/A"),
             "Listing Date": s.get("listing_date", "N/A"),
@@ -314,15 +315,28 @@ def sector_score_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def render_ipo_detail(scores: list[dict], idx: int):
+def render_ipo_detail(ipo: dict):
     """Render full detail view for a selected IPO."""
-    ipo = scores[idx]
+    score_val = ipo.get("alpha_score") or ipo.get("total_score", 0)
+    breakdown = ipo.get("score_breakdown") or ipo.get("breakdown", {})
+    quality = ipo.get("data_quality", "")
+
     st.subheader(f"📋 {ipo.get('company_name', 'Unknown')}")
+
+    # Quality badge
+    if quality:
+        q_color = {"HIGH": "#27AE60", "MEDIUM": "#F39C12", "LOW": "#E74C3C"}.get(quality, "#95A5A6")
+        st.markdown(
+            f"<div style='background:{q_color}15;border:1px solid {q_color};border-radius:6px;"
+            f"padding:0.3rem 0.8rem;margin-bottom:0.5rem;display:inline-block;font-size:0.85rem;'>"
+            f"📊 <b>Data Quality:</b> <span style='color:{q_color};font-weight:700;'>{quality}</span></div>",
+            unsafe_allow_html=True,
+        )
 
     # Gauge + quick stats
     col1, col2, col3 = st.columns([1.5, 1, 1])
     with col1:
-        gauge = score_gauge(ipo.get("alpha_score", 0))
+        gauge = score_gauge(score_val)
         st.plotly_chart(gauge, use_container_width=True)
 
     with col2:
@@ -330,19 +344,30 @@ def render_ipo_detail(scores: list[dict], idx: int):
         st.markdown(f"**Sector:** {ipo.get('sector', 'N/A')}")
         st.markdown(f"**Offer Price:** RM{ipo.get('offer_price', 0):.2f}")
         st.markdown(f"**Market Cap:** RM{ipo.get('market_cap', 0):,.0f}")
-        st.markdown(f"**P/E:** {ipo.get('pe_ratio', 'N/A')}")
-        st.markdown(f"**Shariah:** {'✅ Yes' if ipo.get('shariah_compliant') else '❌ No' if ipo.get('shariah_compliant') is False else '❓ Unknown'}")
+        pe = ipo.get('pe_ratio') or 'N/A'
+        st.markdown(f"**P/E:** {pe}")
+        shariah = ipo.get('shariah_compliant')
+        shariah_str = '✅ Yes' if shariah else ('❌ No' if shariah is False else '❓ Unknown')
+        st.markdown(f"**Shariah:** {shariah_str}")
 
     with col3:
-        st.markdown(f"**Oversub:** {ipo.get('oversubscription_rate', 'N/A')}x")
-        st.markdown(f"**Net Margin:** {ipo.get('net_profit_margin', 'N/A')}%")
-        st.markdown(f"**Rev CAGR:** {ipo.get('revenue_cagr_3yr', 'N/A')}%")
+        oversub = ipo.get('oversubscription_rate') or 'N/A'
+        st.markdown(f"**Oversub:** {oversub}x")
+        margin = ipo.get('net_profit_margin') or 'N/A'
+        st.markdown(f"**Net Margin:** {margin}%")
+        cagr = ipo.get('revenue_cagr_3yr') or 'N/A'
+        st.markdown(f"**Rev CAGR:** {cagr}%")
         st.markdown(f"**Public Float:** {ipo.get('public_float_pct', 0)}%")
         st.markdown(f"**Total Shares:** {ipo.get('total_shares', 0):,}")
         st.markdown(f"**Status:** {ipo.get('application_status', 'N/A')}")
 
+    # Warn if data-limited
+    if quality == "LOW":
+        st.warning("⚠️ Limited data available — score is conservative. Add fundamental data for better accuracy.")
+    elif quality == "MEDIUM":
+        st.info("ℹ️ Moderate data available — some scoring criteria use neutral defaults.")
+
     # Score breakdown chart
-    breakdown = ipo.get("score_breakdown", {})
     if breakdown:
         st.plotly_chart(score_breakdown_chart(breakdown), use_container_width=True)
 
@@ -404,83 +429,6 @@ def render_ipo_detail(scores: list[dict], idx: int):
         st.warning(f"Liquidity assessment unavailable: {e}")
 
 
-def render_new_scan():
-    """Form to trigger a new IPO scan and analysis."""
-    st.subheader("🆕 New IPO Scan")
-
-    st.markdown("""
-    Enter IPO details manually to run the scoring engine.
-    Data will be saved to the IPO database and appear in the dashboard.
-    """)
-
-    with st.form("new_ipo_form"):
-        col1, col2 = st.columns(2)
-
-        with col1:
-            company = st.text_input("Company Name", placeholder="e.g. Alpha Tech Bhd")
-            market = st.selectbox("Market", ["ACE", "Main", "LEAP"])
-            sector = st.selectbox("Sector", [
-                "Technology", "Industrial / Industrial Products", "Property / Property Development",
-                "Healthcare", "Consumer / Consumer Products", "Construction",
-                "Energy / Oil & Gas", "Plantation", "Financial Services",
-                "REIT", "Telecommunications", "Transportation & Logistics",
-            ])
-            offer_price = st.number_input("Offer Price (RM)", min_value=0.01, step=0.05, format="%.2f")
-            market_cap = st.number_input("Market Cap (RM)", min_value=0.0, step=1_000_000.0, format="%.0f")
-            pe_ratio = st.number_input("P/E Ratio", min_value=0.0, step=0.1, format="%.1f")
-            sector_avg_pe = st.number_input("Sector Avg P/E", min_value=0.0, step=0.1, format="%.1f")
-            oversub = st.number_input("Oversubscription Rate (x)", min_value=0.0, step=0.1, format="%.1f")
-
-        with col2:
-            net_margin = st.number_input("Net Profit Margin %", min_value=-50.0, step=0.5, format="%.1f")
-            rev_cagr = st.number_input("Revenue CAGR (3yr) %", min_value=-50.0, step=0.5, format="%.1f")
-            shariah = st.selectbox("Shariah Compliant", ["Yes", "No", "Unknown"])
-            float_pct = st.slider("Public Float %", 0, 100, 25)
-            total_shares = st.number_input("Total Shares", min_value=1, step=1_000_000, format="%d")
-            moratorium = st.number_input("Moratorium Period (years)", min_value=0.0, step=0.5, format="%.1f")
-            promoter_pct = st.number_input("Promoter Ownership %", min_value=0.0, max_value=100.0, step=1.0, format="%.1f")
-            status = st.selectbox("Application Status", ["Open", "Closing", "Listed", "Pending"])
-
-        submitted = st.form_submit_button("📊 Score & Save", type="primary", use_container_width=True)
-
-        if submitted:
-            ipo_data = {
-                "company_name": company,
-                "market": market,
-                "sector": sector,
-                "offer_price": offer_price,
-                "market_cap": market_cap,
-                "pe_ratio": pe_ratio or None,
-                "sector_avg_pe": sector_avg_pe or None,
-                "oversubscription_rate": oversub or None,
-                "proceeds_utilization": {"capex_pct": None, "debt_pct": None, "working_capital_pct": None},
-                "net_profit_margin": net_margin or None,
-                "revenue_cagr_3yr": rev_cagr or None,
-                "shariah_compliant": True if shariah == "Yes" else False if shariah == "No" else None,
-                "moratorium_period_years": moratorium or None,
-                "promoter_ownership_pct": promoter_pct or None,
-                "total_shares": total_shares,
-                "public_float_pct": float_pct,
-                "application_status": status,
-                "listing_date": None,
-            }
-
-            result = calculate_alpha_score(ipo_data)
-
-            ipo_data["alpha_score"] = result["total_score"]
-            ipo_data["verdict"] = result["verdict"]
-            ipo_data["score_breakdown"] = result["breakdown"]
-
-            scores = load_scores()
-            # Check for duplicate by company name
-            existing_names = {s.get("company_name", "").lower().strip() for s in scores}
-            if company.lower().strip() in existing_names:
-                st.error(f"⚠️ {company} is already in the database! Edit the existing entry instead.")
-            else:
-                scores.append(ipo_data)
-                save_scores(scores)
-                st.success(f"✅ {company} scored! Alpha: {result['total_score']:.1f}/100 → **{result['verdict']}**")
-                st.balloons()
 
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────
@@ -516,7 +464,7 @@ if not df.empty:
 st.sidebar.markdown("### 🧭 Navigation")
 page = st.sidebar.radio(
     "Go to",
-    ["📈 Overview", "📋 IPO List", "🏭 Sector Analysis", "🆕 New Scan"],
+    ["📈 Overview", "📋 IPO Browser", "🏭 Sector Analysis"],
     label_visibility="collapsed",
 )
 
@@ -535,7 +483,7 @@ if page == "📈 Overview":
     st.markdown("*Automated pre-listing valuation and scoring for Malaysian IPOs*")
 
     if not scores:
-        st.info("📭 No IPOs scored yet. Add one via **🆕 New Scan** or import data.")
+        st.info("📭 No IPOs loaded yet. Go to **📋 IPO Browser** to fetch live Bursa listings.")
     else:
         # KPI row
         k1, k2, k3, k4, k5 = st.columns(5)
@@ -592,50 +540,171 @@ if page == "📈 Overview":
         st.dataframe(recent, hide_index=True, use_container_width=True)
 
 
-elif page == "📋 IPO List":
-    st.title("📋 IPO Database")
+elif page == "📋 IPO Browser":
+    st.title("🇲🇾 Bursa IPO Browser")
 
-    if not scores:
-        st.info("📭 No IPOs in database. Add one via **🆕 New Scan**.")
+    # ── Cache wrapper for batch scraping ──
+    @st.cache_data(ttl=300, show_spinner="🔍 Scraping Bursa Malaysia IPO listings...")
+    def get_live_bursa_ipos():
+        return batch_scrape_all(limit=100)
+
+    # Refresh button + status bar
+    col_r1, col_r2 = st.columns([1, 3])
+    with col_r1:
+        if st.button("🔄 Refresh from Bursa", type="primary", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    # Load data
+    bursa_listings = get_live_bursa_ipos()
+    all_ipos = list(bursa_listings)
+
+    # Merge manual entries not already in Bursa data
+    bursa_names = {i["company_name"].lower().strip() for i in bursa_listings}
+    for s in scores:
+        if s.get("company_name", "").lower().strip() not in bursa_names:
+            s["data_quality"] = s.get("data_quality", "MANUAL")
+            all_ipos.append(s)
+
+    with col_r2:
+        st.caption(f"📡 {len(bursa_listings)} live Bursa listings · {len(all_ipos) - len(bursa_listings)} manual entries")
+
+    if not all_ipos:
+        st.info("📭 No IPO listings found. Try **Refresh from Bursa** or add manually below.")
     else:
-        # Filters
+        # ── Filters ──
         col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
-            verdict_filter = st.multiselect("Verdict", ["BUY", "NEUTRAL", "AVOID"], default=["BUY", "NEUTRAL", "AVOID"])
+            verdict_opts = sorted({i.get("verdict", "N/A") for i in all_ipos})
+            verdict_filter = st.multiselect("Verdict", verdict_opts, default=verdict_opts)
         with col_f2:
-            sectors = sorted(df["Sector"].unique())
+            sectors = sorted({i.get("sector", "N/A") for i in all_ipos})
             sector_filter = st.multiselect("Sector", sectors, default=sectors)
         with col_f3:
-            markets = sorted(df["Market"].unique())
+            markets = sorted({i.get("market", "N/A") for i in all_ipos})
             market_filter = st.multiselect("Market", markets, default=markets)
         with col_f4:
             search = st.text_input("🔍 Search Company", placeholder="Type name...")
 
         # Apply filters
-        filtered = df.copy()
+        filtered = all_ipos
         if verdict_filter:
-            filtered = filtered[filtered["Verdict"].isin(verdict_filter)]
+            filtered = [i for i in filtered if i.get("verdict", "N/A") in verdict_filter]
         if sector_filter:
-            filtered = filtered[filtered["Sector"].isin(sector_filter)]
+            filtered = [i for i in filtered if i.get("sector", "N/A") in sector_filter]
         if market_filter:
-            filtered = filtered[filtered["Market"].isin(market_filter)]
+            filtered = [i for i in filtered if i.get("market", "N/A") in market_filter]
         if search:
-            filtered = filtered[filtered["Company"].str.contains(search, case=False, na=False)]
+            q = search.lower()
+            filtered = [i for i in filtered if q in i.get("company_name", "").lower()]
 
-        st.caption(f"Showing {len(filtered)} of {len(df)} IPOs")
+        st.caption(f"Showing {len(filtered)} of {len(all_ipos)} IPOs")
 
-        # Display as clickable cards
-        for idx, row in filtered.iterrows():
-            color = VERDICT_COLORS.get(row["Verdict"], "#95A5A6")
-            with st.expander(f"🏷️ {row['Company']} — [ {row['Verdict']} ]  Score: {row['Alpha Score']:.0f}/100"):
-                # Find the actual index in the original scores list
-                original_idx = None
-                for i, s in enumerate(scores):
-                    if s.get("company_name") == row["Company"]:
-                        original_idx = i
-                        break
-                if original_idx is not None:
-                    render_ipo_detail(scores, original_idx)
+        # ── Display as cards ──
+        DQ_COLORS = {"HIGH": "#27AE60", "MEDIUM": "#F39C12", "LOW": "#E74C3C", "MANUAL": "#3498DB"}
+
+        for ipo in filtered:
+            score_val = ipo.get("total_score") or ipo.get("alpha_score", 0)
+            verdict = ipo.get("verdict", "N/A")
+            quality = ipo.get("data_quality", "LOW")
+            color = VERDICT_COLORS.get(verdict, "#95A5A6")
+            q_color = DQ_COLORS.get(quality, "#95A5A6")
+
+            # Build compact label
+            label = f"🏷️ {ipo.get('company_name', 'Unknown')}"
+            label += f" — [{verdict}]  {score_val:.0f}/100"
+            if ipo.get("ticker"):
+                label = f"{ipo.get('ticker', '')} | {label}"
+
+            with st.expander(label):
+                # Quality + Score badges in header row
+                col_h1, col_h2 = st.columns([1, 3])
+                with col_h1:
+                    st.markdown(
+                        f"""<div style='display:flex;gap:0.5rem;'>
+                            <div style='background:{color}15;border:1px solid {color};border-radius:6px;
+                                       padding:0.2rem 0.6rem;font-size:0.85rem;font-weight:700;color:{color};'>
+                                {score_val:.0f}/100</div>
+                            <div style='background:{q_color}15;border:1px solid {q_color};border-radius:6px;
+                                       padding:0.2rem 0.6rem;font-size:0.85rem;font-weight:700;color:{q_color};'>
+                                {quality}</div>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+                with col_h2:
+                    st.markdown(f"""
+                    **{ipo.get('sector', 'N/A')}** · {ipo.get('market', 'N/A')} · RM{ipo.get('offer_price', 0):.2f}
+                    """)
+
+                # Main detail
+                render_ipo_detail(ipo)
+
+    st.markdown("---")
+
+    # ── Manual entry (collapsed) ──
+    with st.expander("➕ Add IPO Manually (for IPOs the scraper missed)"):
+        from scoring_engine import calculate_alpha_score
+        st.markdown("Fill in details if the scraper didn't find an IPO you know about.")
+        with st.form("manual_ipo_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                company = st.text_input("Company Name", placeholder="e.g. Alpha Tech Bhd", key="m_company")
+                market = st.selectbox("Market", ["ACE", "Main", "LEAP"], key="m_market")
+                sector = st.selectbox("Sector", [
+                    "Technology", "Industrial / Industrial Products", "Property / Property Development",
+                    "Healthcare", "Consumer / Consumer Products", "Construction",
+                    "Energy / Oil & Gas", "Plantation", "Financial Services",
+                    "REIT", "Telecommunications", "Transportation & Logistics",
+                ], key="m_sector")
+                offer_price = st.number_input("Offer Price (RM)", min_value=0.01, step=0.05, format="%.2f", key="m_price")
+                market_cap = st.number_input("Market Cap (RM)", min_value=0.0, step=1_000_000.0, format="%.0f", key="m_mcap")
+                pe_ratio = st.number_input("P/E Ratio", min_value=0.0, step=0.1, format="%.1f", key="m_pe")
+                sector_avg_pe = st.number_input("Sector Avg P/E", min_value=0.0, step=0.1, format="%.1f", key="m_spe")
+                oversub = st.number_input("Oversubscription Rate (x)", min_value=0.0, step=0.1, format="%.1f", key="m_osub")
+            with col2:
+                net_margin = st.number_input("Net Profit Margin %", min_value=-50.0, step=0.5, format="%.1f", key="m_margin")
+                rev_cagr = st.number_input("Revenue CAGR (3yr) %", min_value=-50.0, step=0.5, format="%.1f", key="m_cagr")
+                shariah = st.selectbox("Shariah Compliant", ["Yes", "No", "Unknown"], key="m_shariah")
+                float_pct = st.slider("Public Float %", 0, 100, 25, key="m_float")
+                total_shares = st.number_input("Total Shares", min_value=1, step=1_000_000, format="%d", key="m_shares")
+                moratorium = st.number_input("Moratorium Period (years)", min_value=0.0, step=0.5, format="%.1f", key="m_mora")
+                promoter_pct = st.number_input("Promoter Ownership %", min_value=0.0, max_value=100.0, step=1.0, format="%.1f", key="m_prom")
+                status = st.selectbox("Application Status", ["Open", "Closing", "Listed", "Pending"], key="m_status")
+
+            submitted = st.form_submit_button("📊 Score & Save", type="primary", use_container_width=True)
+            if submitted:
+                if not company.strip():
+                    st.error("Company name is required!")
+                else:
+                    ipo_data = {
+                        "company_name": company, "market": market, "sector": sector,
+                        "offer_price": offer_price, "market_cap": market_cap,
+                        "pe_ratio": pe_ratio or None, "sector_avg_pe": sector_avg_pe or None,
+                        "oversubscription_rate": oversub or None,
+                        "proceeds_utilization": {},
+                        "net_profit_margin": net_margin or None, "revenue_cagr_3yr": rev_cagr or None,
+                        "shariah_compliant": None if shariah == "Unknown" else shariah == "Yes",
+                        "moratorium_period_years": moratorium or None,
+                        "promoter_ownership_pct": promoter_pct or None,
+                        "total_shares": total_shares, "public_float_pct": float_pct,
+                        "application_status": status, "listing_date": None,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "data_quality": "MANUAL",
+                    }
+                    result = calculate_alpha_score(ipo_data)
+                    ipo_data["alpha_score"] = result["total_score"]
+                    ipo_data["verdict"] = result["verdict"]
+                    ipo_data["score_breakdown"] = result["breakdown"]
+
+                    scores = load_scores()
+                    existing_names = {s.get("company_name", "").lower().strip() for s in scores}
+                    if company.lower().strip() in existing_names:
+                        st.error(f"⚠️ {company} is already in the database!")
+                    else:
+                        scores.append(ipo_data)
+                        save_scores(scores)
+                        st.success(f"✅ {company} scored! Alpha: {result['total_score']:.1f}/100 → **{result['verdict']}**")
+                        st.balloons()
 
 
 elif page == "🏭 Sector Analysis":
@@ -708,11 +777,6 @@ elif page == "🏭 Sector Analysis":
             market_avg = df.groupby("Market")["Alpha Score"].mean().reset_index()
             market_avg.columns = ["Market", "Avg Alpha Score"]
             st.dataframe(market_avg, hide_index=True, use_container_width=True)
-
-
-elif page == "🆕 New Scan":
-    st.title("🆕 New IPO Scan")
-    render_new_scan()
 
 
 # ── Footer ──────────────────────────────────────────────────────────────────
