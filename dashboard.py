@@ -345,16 +345,21 @@ def render_card(ipo: dict, scores_list: list[dict]):
     company_name = ipo.get("company_name", "Unknown")
     ticker = ipo.get("ticker", "")
 
+    shariah = ipo.get("shariah_compliant")
+    shariah_badge = " ✅ Shariah" if shariah is True else (" ❌ Non-Shariah" if shariah is False else "")
+
     label_parts = [f" {company_name}"]
     if ticker:
         label_parts.append(f"[{ticker}]")
-    label_parts.append(f" — {ipo.get('sector', 'N/A')}")
+    label_parts.append(f" — {ipo.get('sector', 'N/A')}{shariah_badge}")
     label_parts.append(f"  |  Alpha: {score_val:.0f}/100")
     label_parts.append(f"  [{verdict}]")
 
     expander_label = "".join(label_parts)
 
     with st.expander(expander_label, expanded=False):
+        shariah_color = "#27AE60" if shariah is True else ("#E74C3C" if shariah is False else "#95A5A6")
+        shariah_label = "✅ Shariah" if shariah is True else ("❌ Non-Shariah" if shariah is False else "❓ Unknown")
         st.markdown(
             f"""
             <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem;">
@@ -363,6 +368,9 @@ def render_card(ipo: dict, scores_list: list[dict]):
                 </span>
                 <span class="badge" style="background:{color}15; border:1px solid {color}; color:{color};">
                     {verdict}
+                </span>
+                <span class="badge" style="background:{shariah_color}15; border:1px solid {shariah_color}; color:{shariah_color};">
+                    {shariah_label}
                 </span>
             </div>
             """,
@@ -503,7 +511,7 @@ if st.session_state.show_add_form:
 if not scores:
     st.info(" No IPOs yet. Click **'Add New IPO'** to get started.")
 else:
-    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+    col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
     with col_f1:
         verdict_opts = sorted({s.get("verdict", "N/A") for s in scores})
         verdict_filter = st.multiselect("Verdict", verdict_opts, default=verdict_opts)
@@ -514,6 +522,8 @@ else:
         markets = sorted({s.get("market", "N/A") for s in scores})
         market_filter = st.multiselect("Market", markets, default=markets)
     with col_f4:
+        shariah_filter = st.selectbox("Shariah", ["All", "Shariah", "Non-Shariah"])
+    with col_f5:
         search = st.text_input(" Search Company", placeholder="Type name...")
 
     filtered = scores
@@ -523,6 +533,10 @@ else:
         filtered = [i for i in filtered if i.get("sector", "N/A") in sector_filter]
     if market_filter:
         filtered = [i for i in filtered if i.get("market", "N/A") in market_filter]
+    if shariah_filter == "Shariah":
+        filtered = [i for i in filtered if i.get("shariah_compliant") is True]
+    elif shariah_filter == "Non-Shariah":
+        filtered = [i for i in filtered if i.get("shariah_compliant") is False]
     if search:
         q = search.lower()
         filtered = [i for i in filtered if q in i.get("company_name", "").lower()]
