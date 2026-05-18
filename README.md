@@ -12,13 +12,15 @@ streamlit run dashboard.py
 
 ## Features
 
-### 📊 Streamlit Dashboard v2
+### 📊 Streamlit Dashboard v3
+- **122 Malaysian IPOs** pre-loaded with varied Alpha Scores
 - **IPO Card List** — Single-page layout with tap-to-expand IPO cards
 - **Color-coded scores** — Alpha Score badge & verdict badge per card
+- **🕌 Shariah/Non-Shariah Filter** — Filter IPOs by Shariah compliance status, plus per-card badges
 - **Tap to expand** — Score gauge, 7-criteria breakdown chart, peer comparison, liquidity assessment
 - **➕ Add New IPO** — Manual entry form with on-submit scoring
 - **🔄 Per-IPO Refresh** — Re-score individual IPO on demand
-- **🔍 Filters** — Filter by verdict, sector, market, or search by name
+- **🔍 Filters** — Filter by verdict, sector, market, search, or Shariah status
 - **No auto-scanning** — Everything is manual, on-demand
 
 ### 📈 Alpha Scoring Engine
