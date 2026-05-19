@@ -501,7 +501,10 @@ def render_card(ipo: dict, scores_list: list[dict]):
                                 preview_path = os.path.join(OUTPUT_DIR, f'{ticker}_Sneak_Peek.pdf')
                                 # Generate only cover page + executive summary (section 1)
                                 from reportlab.lib.pagesizes import A4
-                                from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, PageBreak
+                                from reportlab.lib import colors
+                                from reportlab.lib.styles import ParagraphStyle
+                                from reportlab.platypus import (
+                                    BaseDocTemplate, PageTemplate, Frame, PageBreak, Paragraph)
                                 from reportlab.lib.units import mm
                                 doc = BaseDocTemplate(preview_path, pagesize=A4,
                                     leftMargin=20*mm, rightMargin=20*mm,
