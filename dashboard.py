@@ -570,24 +570,44 @@ def render_card(ipo: dict, scores_list: list[dict]):
                 )
         with sc_col3:
             if st.session_state.get(f'social_caps_{ticker}', False):
-                if st.button(' Copy Caption', key=f'cap_{social_key}', help='View platform captions'):
+                if st.button(' Share & Caption', key=f'cap_{social_key}', help='View caption + share buttons'):
                     caps = st.session_state[f'social_caps_{ticker}']
+                    encoded_url = ticker.replace(' ', '')
+                    app_url = f'https://bursa-ipo-screener.streamlit.app?ticker={encoded_url}'
+                    
                     tab_tt, tab_fb, tab_ig, tab_th, tab_x, tab_wa, tab_tg = st.tabs([
                         'TikTok', 'Facebook', 'Instagram', 'Threads', 'X', 'WhatsApp', 'Telegram'])
+                    
                     with tab_tt:
-                        st.text_area('Caption', caps.get('tiktok', ''), height=200, key=f'tt_{social_key}')
+                        st.text_area('Caption to copy', caps.get('tiktok', ''), height=180, key=f'tt_{social_key}')
                     with tab_fb:
-                        st.text_area('Caption', caps.get('facebook', ''), height=200, key=f'fb_{social_key}')
+                        st.text_area('Caption to copy', caps.get('facebook', ''), height=180, key=f'fb_{social_key}')
+                        fb_share = f'https://www.facebook.com/sharer/sharer.php?u={app_url}'
+                        st.markdown(f'<a href="{fb_share}" target="_blank"><button style="background:#1877F2;color:white;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;"> Share to Facebook</button></a>', unsafe_allow_html=True)
                     with tab_ig:
-                        st.text_area('Caption', caps.get('instagram', ''), height=200, key=f'ig_{social_key}')
+                        st.text_area('Caption to copy', caps.get('instagram', ''), height=180, key=f'ig_{social_key}')
                     with tab_th:
-                        st.text_area('Caption', caps.get('threads', ''), height=200, key=f'th_{social_key}')
+                        st.text_area('Caption to copy', caps.get('threads', ''), height=180, key=f'th_{social_key}')
+                        th_share = f'https://www.threads.net/intent/post?text={caps.get("threads", "").replace(chr(10), " ")[:200]}'
+                        st.markdown(f'<a href="{th_share}" target="_blank"><button style="background:#000;color:white;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;"> Share to Threads</button></a>', unsafe_allow_html=True)
                     with tab_x:
-                        st.text_area('Caption', caps.get('x_twitter', ''), height=200, key=f'x_{social_key}')
+                        st.text_area('Caption to copy', caps.get('x_twitter', ''), height=180, key=f'x_{social_key}')
+                        x_text = caps.get('x_twitter', '').replace(chr(10), ' ')[:260]
+                        from urllib.parse import quote
+                        x_share = f'https://twitter.com/intent/tweet?text={quote(x_text)}&url={quote(app_url)}'
+                        st.markdown(f'<a href="{x_share}" target="_blank"><button style="background:#000;color:white;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;"> 𝕏 Share on X</button></a>', unsafe_allow_html=True)
                     with tab_wa:
-                        st.text_area('Caption', caps.get('whatsapp', ''), height=200, key=f'wa_{social_key}')
+                        st.text_area('Caption to copy', caps.get('whatsapp', ''), height=180, key=f'wa_{social_key}')
+                        wa_text = caps.get('whatsapp', '').replace('*', '').replace(chr(10), ' ')[:300]
+                        from urllib.parse import quote
+                        wa_share = f'https://wa.me/?text={quote(wa_text)}%0A%0A{quote(app_url)}'
+                        st.markdown(f'<a href="{wa_share}" target="_blank"><button style="background:#25D366;color:white;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;"> Share to WhatsApp</button></a>', unsafe_allow_html=True)
                     with tab_tg:
-                        st.text_area('Caption', caps.get('telegram', ''), height=200, key=f'tg_{social_key}')
+                        st.text_area('Caption to copy', caps.get('telegram', ''), height=180, key=f'tg_{social_key}')
+                        tg_text = caps.get('telegram', '').replace(chr(10), ' ')[:300]
+                        from urllib.parse import quote
+                        tg_share = f'https://t.me/share/url?url={quote(app_url)}&text={quote(tg_text)}'
+                        st.markdown(f'<a href="{tg_share}" target="_blank"><button style="background:#0088cc;color:white;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;"> Share to Telegram</button></a>', unsafe_allow_html=True)
 
         render_ipo_detail(ipo)
 
