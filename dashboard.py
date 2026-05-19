@@ -502,6 +502,7 @@ def render_card(ipo: dict, scores_list: list[dict]):
                                 # Generate only cover page + executive summary (section 1)
                                 from reportlab.lib.pagesizes import A4
                                 from reportlab.lib import colors
+                                from reportlab.lib.enums import TA_CENTER
                                 from reportlab.lib.styles import ParagraphStyle
                                 from reportlab.platypus import (
                                     BaseDocTemplate, PageTemplate, Frame, PageBreak, Paragraph)
