@@ -311,11 +311,53 @@ def make_captions(ipo):
         f"━━━━━━━━━━━━━━━━━━\n"
         f"📄 Full report → {url}"
     )
-    
+
+    # ── Instagram ───────────────────────────────────────────────────────
+    instagram = (
+        f"{emoji} {cn} IPO ALERT\n\n"
+        f"Alpha Score: {score_str} → {verdict}\n\n"
+        f"📊 The Numbers:\n"
+        f"▸ P/E: {pe_str}\n"
+        f"▸ Net Margin: {margin_str}\n"
+        f"▸ Revenue Growth: {cagr_str}\n"
+        f"▸ Oversub: {over_str}\n"
+        f"{shariah}\n\n"
+        f"Full analysis & 30-page report:\n"
+        f"Link in bio 🔗\n\n"
+        f"#IPO #BursaMalaysia #{ticker or cn.replace(' ', '')} "
+        f"#{('BUY' if verdict == 'BUY' else 'StockAlert')} #MalaysiaStocks"
+    )
+
+    # ── X (Twitter) ─────────────────────────────────────────────────────
+    x_twitter = (
+        f"{emoji} ${ticker or cn.replace(' ', '')} IPO Score: {score_str} — {verdict}\n\n"
+        f"P/E {pe_str} | Margin {margin_str} | CAGR {cagr_str} | "
+        f"Oversub {over_str}\n"
+        f"{shariah} | {market}\n\n"
+        f"By @bursaiposcreener\n"
+        f"{url}"
+    )
+
+    # ── WhatsApp ────────────────────────────────────────────────────────
+    whatsapp = (
+        f"🤖 *IPO ANALYSIS: {cn}*\n"
+        f"─────────────────────\n"
+        f"Alpha Score: *{score_str}* → *{verdict}*\n"
+        f"P/E: {pe_str} | Margin: {margin_str}\n"
+        f"Growth: {cagr_str} | Oversub: {over_str}\n"
+        f"{shariah}\n"
+        f"─────────────────────\n"
+        f"Full report: {url}\n"
+        f"Bursa IPO Alpha Screener"
+    )
+
     return {
         'tiktok': tiktok,
         'facebook': facebook,
+        'instagram': instagram,
         'threads': threads,
+        'x_twitter': x_twitter,
+        'whatsapp': whatsapp,
         'telegram': telegram,
     }
 

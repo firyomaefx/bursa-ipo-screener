@@ -569,13 +569,20 @@ def render_card(ipo: dict, scores_list: list[dict]):
             if st.session_state.get(f'social_caps_{ticker}', False):
                 if st.button(' Copy Caption', key=f'cap_{social_key}', help='View platform captions'):
                     caps = st.session_state[f'social_caps_{ticker}']
-                    tab_tiktok, tab_fb, tab_threads, tab_tg = st.tabs(['TikTok', 'Facebook', 'Threads', 'Telegram'])
-                    with tab_tiktok:
+                    tab_tt, tab_fb, tab_ig, tab_th, tab_x, tab_wa, tab_tg = st.tabs([
+                        'TikTok', 'Facebook', 'Instagram', 'Threads', 'X', 'WhatsApp', 'Telegram'])
+                    with tab_tt:
                         st.text_area('Caption', caps.get('tiktok', ''), height=200, key=f'tt_{social_key}')
                     with tab_fb:
                         st.text_area('Caption', caps.get('facebook', ''), height=200, key=f'fb_{social_key}')
-                    with tab_threads:
+                    with tab_ig:
+                        st.text_area('Caption', caps.get('instagram', ''), height=200, key=f'ig_{social_key}')
+                    with tab_th:
                         st.text_area('Caption', caps.get('threads', ''), height=200, key=f'th_{social_key}')
+                    with tab_x:
+                        st.text_area('Caption', caps.get('x_twitter', ''), height=200, key=f'x_{social_key}')
+                    with tab_wa:
+                        st.text_area('Caption', caps.get('whatsapp', ''), height=200, key=f'wa_{social_key}')
                     with tab_tg:
                         st.text_area('Caption', caps.get('telegram', ''), height=200, key=f'tg_{social_key}')
 
