@@ -51,6 +51,30 @@ Click any card to expand and see:
 - **➕ Add New IPO** — manually enter IPO details (price, PE, sector, financials), get an instant score
 - **🔄 Refresh** — re-score any IPO on demand (useful after updated data)
 
+### 📱 Social Media Cards
+
+Every IPO gets a downloadable social media card + platform-optimized captions:
+
+| Platform | Size | Caption Style |
+|----------|------|--------------|
+| **TikTok** | 1080×1920 | Short punchy hook + hashtags |
+| **Facebook** | 1200×630 | Question hook + analysis |
+| **Instagram** | 1080×1080 | Bio-link style, hashtag-heavy |
+| **Threads** | 1080×1080 | Casual opinion + open question |
+| **X (Twitter)** | 1080×1080 | Ultra-short 280-char, $TICKER format |
+| **WhatsApp** | 1080×1080 | Bold markdown for messaging |
+| **Telegram** | 1080×1080 | Clean box format + metrics |
+
+Click **Generate Card** on any IPO → download PNG + pick your caption.
+
+### 🎯 Paid Reports
+
+- **Sneak Peek (FREE):** Cover page + Executive Summary (2 pages)
+- **Full Report (RM30):** 30-page institutional PDF via Stripe payment
+  - Investment Thesis · Business Dynamics · Industry Analysis
+  - Quality of Earnings · Financial Forecasting (3-statement model)
+  - Valuation & Sensitivity · Management Assessment · ESG & Risk
+
 ---
 
 ## 🧮 How Scoring Works (7-Criteria Alpha Score)
@@ -105,11 +129,16 @@ bursa-ipo-bot/
 ├── dashboard.py           # ⭐ Streamlit dashboard (run this)
 ├── scoring_engine.py      # Core scoring algorithm (7 criteria)
 ├── peer_comparison.py     # 12-sector benchmark comparison
+├── report_generator.py    # 30-page institutional PDF report generator
+├── social_generator.py    # Social media cards + platform captions
+├── payment_gateway.py     # Stripe Checkout integration
 ├── gen_ipo_data.py        # Script to generate IPO database
 ├── ipo_scores.json        # Scored IPO database (122 entries)
 ├── streamlit_app.py       # Entry wrapper for Streamlit Cloud
 ├── .streamlit/config.toml # Bursa-themed UI config
 ├── requirements.txt       # Python dependencies
+├── social/                # Generated social cards output
+├── reports/               # Generated PDF reports output
 └── README.md
 ```
 
@@ -139,7 +168,9 @@ Your app will be live in a few minutes at `https://your-app-name.streamlit.app`.
 - **Streamlit** — Web dashboard
 - **Plotly** — Interactive charts (gauge, breakdown bars)
 - **Pandas** — Data processing
-- **Playwright** — Screenshot capture (optional)
+- **Pillow** — Social card image generation
+- **ReportLab + Matplotlib** — 30-page PDF report generation
+- **Stripe** — Pay-per-report payment gateway
 
 ---
 
@@ -147,9 +178,14 @@ Your app will be live in a few minutes at `https://your-app-name.streamlit.app`.
 
 | Version | What's New |
 |---------|-----------|
-| v3.1.0 | Shariah/Non-Shariah filter + badges. 122 IPOs. Better README. |
-| v3.0.0 | Full dashboard rewrite: single-page card list, Add New IPO, per-IPO Refresh. No auto-scan. |
-| v2.0.0 | 4-tab Streamlit dashboard + peer comparison engine |
+| v2.1.2 | 7 social media platforms (TikTok, FB, IG, Threads, X, WA, TG) |
+| v2.1.1 | Sneak peek (2 pages) instead of full report. Bigger social card text. |
+| v2.1.0 | Social card generator + dynamic PDF reports for all 122 IPOs |
+| v3.3.0 | Stripe pay-per-report — Buy Report with Stripe Checkout |
+| v3.2.0 | 30-page institutional PDF report generator |
+| v3.1.0 | Shariah/Non-Shariah filter + badges. 122 IPOs. |
+| v3.0.0 | Dashboard rewrite: single-page card list, Add New IPO |
+| v2.0.0 | 4-tab Streamlit dashboard + peer comparison |
 | v1.0.0 | Scoring engine + Telegram bot |
 
 ---
