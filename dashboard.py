@@ -24,7 +24,6 @@ if 'payment_ticker' not in st.session_state:
     st.session_state.payment_ticker = None
 if 'payment_verified' not in st.session_state:
     st.session_state.payment_verified = {}
-from report_generator import generate_ipo_report
 
 BOT_DIR = Path(__file__).parent
 DATA_DIR = BOT_DIR / "data"
@@ -505,6 +504,48 @@ def render_card(ipo: dict, scores_list: list[dict]):
                             )
                         except Exception as e:
                             st.error(f"Report generation failed: {e}")
+
+        # --- Social Card Generator ---
+        social_key = f'social_{ipo.get("company_name", "")}_{ticker}'
+        st.markdown("📱 **Social Media**")
+        sc_col1, sc_col2, sc_col3 = st.columns([1, 1, 1])
+        with sc_col1:
+            if st.button(" Generate Card", key=f'gen_{social_key}', help='Generate social media card for this IPO'):
+                with st.spinner('Generating card...'):
+                    try:
+                        from social_generator import make_card, make_captions
+                        import io
+                        img = make_card(ipo, 'telegram')
+                        buf = io.BytesIO()
+                        img.save(buf, format='PNG')
+                        buf.seek(0)
+                        st.session_state[f'social_card_{ticker}'] = buf.getvalue()
+                        st.session_state[f'social_caps_{ticker}'] = make_captions(ipo)
+                        st.success('Card generated!')
+                    except Exception as e:
+                        st.error(f'Card generation failed: {e}')
+        with sc_col2:
+            if st.session_state.get(f'social_card_{ticker}', False):
+                st.download_button(
+                    label=' Download PNG',
+                    data=st.session_state[f'social_card_{ticker}'],
+                    file_name=f'{ticker}_social_card.png',
+                    mime='image/png',
+                    key=f'dl_card_{social_key}',
+                )
+        with sc_col3:
+            if st.session_state.get(f'social_caps_{ticker}', False):
+                if st.button(' Copy Caption', key=f'cap_{social_key}', help='View platform captions'):
+                    caps = st.session_state[f'social_caps_{ticker}']
+                    tab_tiktok, tab_fb, tab_threads, tab_tg = st.tabs(['TikTok', 'Facebook', 'Threads', 'Telegram'])
+                    with tab_tiktok:
+                        st.text_area('Caption', caps.get('tiktok', ''), height=200, key=f'tt_{social_key}')
+                    with tab_fb:
+                        st.text_area('Caption', caps.get('facebook', ''), height=200, key=f'fb_{social_key}')
+                    with tab_threads:
+                        st.text_area('Caption', caps.get('threads', ''), height=200, key=f'th_{social_key}')
+                    with tab_tg:
+                        st.text_area('Caption', caps.get('telegram', ''), height=200, key=f'tg_{social_key}')
 
         render_ipo_detail(ipo)
 
