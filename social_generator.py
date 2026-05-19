@@ -130,80 +130,68 @@ def make_card(ipo, platform='telegram', size=None):
     sector = s.get('sector', 'General')
     
     verdict_color = GREEN if verdict == 'BUY' else (GOLD if verdict == 'NEUTRAL' else RED)
-    is_portrait = h > w
-    
-    # Responsive sizing
     base = min(w, h)
-    padding = int(base * 0.045)
+    pad = int(base * 0.04)
     
-    # ── Header bar ──────────────────────────────────────────────────────
+    # Header bar — compact
     header_h = int(base * 0.1)
-    _draw_rounded_rect(draw, (padding, padding, w - padding, padding + header_h),
-                       12, BG_CARD)
-    # Golden dot
-    dot_r = 8
-    draw.ellipse([padding + 20 - dot_r, padding + header_h//2 - dot_r,
-                  padding + 20 + dot_r, padding + header_h//2 + dot_r],
-                 fill=GOLD)
-    # Title
-    title_fnt = _font('bold', max(14, int(base * 0.032)))
-    title_txt = "🚀  IPO ALPHA SCREENER"
-    draw.text((padding + 38, padding + header_h // 2), title_txt,
+    _draw_rounded_rect(draw, (pad, pad, w - pad, pad + header_h), 14, BG_CARD)
+    title_fnt = _font('bold', max(16, int(base * 0.04)))
+    draw.text((pad + 18, pad + header_h // 2), 'IPO ALPHA SCREENER',
               fill=GOLD, font=title_fnt, anchor='lm')
+    if shariah:
+        sh_font = _font('bold', max(11, int(base * 0.026)))
+        draw.text((w - pad - 12, pad + header_h // 2), 'SHARIAH',
+                  fill=GREEN, font=sh_font, anchor='rm')
     
-    # ── Company name (centered, large) ──────────────────────────────────
-    name_area_y = padding + header_h + int(base * 0.06)
-    name_fnt = _font('bold', max(24, int(base * 0.075)))
-    name_max_w = w - padding * 4
-    company_display = _truncate(cn.upper(), name_max_w, name_fnt, draw)
-    draw.text((w // 2, name_area_y), company_display, fill=WHITE,
-              font=name_fnt, anchor='mm')
+    # Company name (BIG)
+    name_y = pad + header_h + int(base * 0.03)
+    name_size = max(30, int(base * 0.09))
+    name_fnt = _font('bold', name_size)
+    display_name = _truncate(cn.upper(), w - pad*4, name_fnt, draw)
+    draw.text((w // 2, name_y), display_name, fill=WHITE, font=name_fnt, anchor='mm')
     
-    # Ticker below name
-    ticker_y = name_area_y + int(base * 0.055)
+    # Ticker
+    tick_y = name_y + int(base * 0.055)
     if ticker:
-        tick_fnt = _font('light', max(14, int(base * 0.033)))
-        draw.text((w // 2, ticker_y), ticker, fill=GRAY_TEXT, font=tick_fnt, anchor='mm')
+        draw.text((w // 2, tick_y), ticker, fill=LIGHT_GRAY,
+                  font=_font('bold', max(16, int(base * 0.04))), anchor='mm')
     
-    # ── Verdict badge + Score ───────────────────────────────────────────
-    badge_y = ticker_y + int(base * 0.08)
-    _draw_badge(draw, w // 2, badge_y, verdict, verdict_color, max(18, int(base * 0.04)))
+    # Verdict badge
+    badge_y = tick_y + int(base * 0.065)
+    badge_size = max(20, int(base * 0.047))
+    _draw_badge(draw, w // 2, badge_y, verdict, verdict_color, badge_size)
     
-    # Score number
-    score_y = badge_y + int(base * 0.09)
-    score_fnt = _font('bold', max(36, int(base * 0.095)))
+    # Score (MASSIVE)
+    score_y = badge_y + int(base * 0.1)
+    score_size = max(46, int(base * 0.115))
     draw.text((w // 2, score_y), f'{score:.0f}', fill=verdict_color,
-              font=score_fnt, anchor='mm')
-    # Score label
-    score_label_y = score_y + int(base * 0.045)
-    sl_fnt = _font('regular', max(11, int(base * 0.026)))
-    draw.text((w // 2, score_label_y), '/ 100', fill=GRAY_TEXT, font=sl_fnt, anchor='mm')
+              font=_font('bold', score_size), anchor='mm')
+    score_label_y = score_y + int(base * 0.05)
+    draw.text((w // 2, score_label_y), '/ 100', fill=GRAY_TEXT,
+              font=_font('regular', max(13, int(base * 0.03))), anchor='mm')
     
-    # ── Metrics card ────────────────────────────────────────────────────
-    card_y = score_label_y + int(base * 0.06)
-    card_pad = int(base * 0.06)
-    card_w = w - padding * 3
-    card_h = int((base * 0.38) if is_portrait else (base * 0.5))
-    card_x = padding + (w - padding * 2 - card_w) // 2
-    _draw_rounded_rect(draw, (card_x, card_y, card_x + card_w, card_y + card_h),
-                       16, BG_CARD)
+    # Metrics card — wide, fits 5 metrics comfortably
+    card_y = score_label_y + int(base * 0.055)
+    card_w = w - pad * 3
+    card_h = int(base * 0.40)
+    card_x = (w - card_w) // 2
+    _draw_rounded_rect(draw, (card_x, card_y, card_x + card_w, card_y + card_h), 16, BG_CARD)
     
-    # Metrics layout
-    metrics_fnt = _font('bold', max(11, int(base * 0.024)))
-    val_fnt = _font('bold', max(12, int(base * 0.028)))
+    ml = max(13, int(base * 0.032))  # metric label
+    mv = max(15, int(base * 0.037))   # metric value
+    met_fnt = _font('bold', ml)
+    val_fnt = _font('bold', mv)
     
     def _metric_row(idx, label, value, color=WHITE):
-        """Draw a metric row inside the card."""
-        row_h = card_h // 6
-        y = card_y + 8 + idx * row_h
-        x_l = card_x + 22
-        x_r = card_x + card_w - 22
-        draw.text((x_l, y + row_h // 2), label, fill=GRAY_TEXT, font=metrics_fnt, anchor='lm')
-        draw.text((x_r, y + row_h // 2), str(value), fill=color, font=val_fnt, anchor='rm')
-        # Divider
-        if idx < 5:
-            dy = y + row_h
-            draw.line([(x_l, dy), (x_r, dy)], fill=DARK_GRAY, width=1)
+        row_h = (card_h - 16) // 5
+        y0 = card_y + 8 + idx * row_h
+        x_l = card_x + 18
+        x_r = card_x + card_w - 18
+        draw.text((x_l, y0 + row_h // 2), label, fill=GRAY_TEXT, font=met_fnt, anchor='lm')
+        draw.text((x_r, y0 + row_h // 2), str(value), fill=color, font=val_fnt, anchor='rm')
+        if idx < 4:
+            draw.line([(x_l, y0 + row_h), (x_r, y0 + row_h)], fill=DARK_GRAY, width=1)
     
     pe_str = f'{pe:.1f}x' if isinstance(pe, (int, float)) else '—'
     margin_str = f'{margin:.1f}%' if isinstance(margin, (int, float)) else '—'
@@ -217,30 +205,20 @@ def make_card(ipo, platform='telegram', size=None):
     _metric_row(3, 'Oversub', over_str, ACCENT_BLUE)
     _metric_row(4, 'Shariah', shariah_str, GREEN if shariah else LIGHT_GRAY)
     
-    # ── Market badge ────────────────────────────────────────────────────
-    mkt_h = int(base * 0.04)
-    mkt_y = card_y + card_h + int(base * 0.03)
-    mkt_str = f'{market} · {sector}'
-    mkt_fnt = _font('light', max(10, int(base * 0.022)))
-    draw.text((w // 2, mkt_y), mkt_str, fill=DARK_GRAY, font=mkt_fnt, anchor='mm')
+    # Market + sector line
+    market_y = card_y + card_h + int(base * 0.03)
+    mkt_fnt = _font('bold', max(12, int(base * 0.028)))
+    draw.text((w // 2, market_y), f'{market} · {sector}', fill=DARK_GRAY,
+              font=mkt_fnt, anchor='mm')
     
-    # ── Footer ──────────────────────────────────────────────────────────
-    footer_y = h - padding - int(base * 0.025)
-    foot_fnt = _font('light', max(10, int(base * 0.022)))
-    # Divider line
-    divider_y = footer_y - int(base * 0.055)
-    draw.line([(padding + 30, divider_y), (w - padding - 30, divider_y)],
+    # Footer
+    footer_y = h - pad - int(base * 0.02)
+    foot_fnt = _font('bold', max(12, int(base * 0.028)))
+    divider_y = footer_y - int(base * 0.05)
+    draw.line([(pad + 40, divider_y), (w - pad - 40, divider_y)],
               fill=DARK_GRAY, width=1)
     draw.text((w // 2, footer_y), 'bursa-ipo-screener.streamlit.app',
               fill=DARK_GRAY, font=foot_fnt, anchor='mm')
-    
-    # ── Shariah indicator (top-right corner) ────────────────────────────
-    if shariah:
-        s_label = "✅ SHARIAH" if is_portrait else "S"
-        s_fnt = _font('bold', max(10, int(base * 0.024)))
-        sx = w - padding - 16
-        sy = padding + header_h // 2
-        draw.text((sx, sy), s_label, fill=GREEN, font=s_fnt, anchor='rm')
     
     return img
 

@@ -13,7 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from scoring_engine import calculate_alpha_score, assess_liquidity_risk
-from report_generator import generate_report
+from report_generator import generate_report, IPOReport
 from peer_comparison import compare_ipo_to_sector
 from payment_gateway import create_checkout_session, verify_payment, check_stripe_config, get_publishable_key, DEFAULT_PRICE_RM
 
@@ -485,25 +485,57 @@ def render_card(ipo: dict, scores_list: list[dict]):
                 with col_price[1]:
                     st.caption(f"RM{DEFAULT_PRICE_RM}")
             else:
-                # Stripe not configured — show free demo version
-                if st.button(f" Preview Report (FREE)", key=report_key,
-                            help="Generate a free preview report"):
-                    with st.spinner("Generating preview..."):
+                # Stripe not configured — show free sneak peek
+                if st.button(f" Sneak Peek (FREE - 1 page)", key=report_key,
+                            help="Generate a 1-page sneak peek — pay for the full report"):
+                    with st.spinner("Generating sneak peek..."):
                         try:
-                            pdf_path = generate_report(ticker=ticker)
-                            with open(pdf_path, "rb") as f:
-                                pdf_bytes = f.read()
-                            st.success(" Preview ready!")
-                            st.info("Note: For the full 30-page report, configure Stripe payment.")
-                            st.download_button(
-                                label=" Download Preview",
-                                data=pdf_bytes,
-                                file_name=f'{ticker}_Research_Preview.pdf',
-                                mime="application/pdf",
-                                key=f'dl_free_{report_key}',
-                            )
+                            from report_generator import IPOReport, OUTPUT_DIR
+                            import json
+                            with open('ipo_scores.json') as f:
+                                db = json.load(f)
+                            ipo_data = next((d for d in db if d.get('ticker','').upper()==ticker.upper()), None)
+                            if not ipo_data:
+                                st.error("IPO data not found")
+                            else:
+                                preview_path = os.path.join(OUTPUT_DIR, f'{ticker}_Sneak_Peek.pdf')
+                                # Generate only cover page + executive summary (section 1)
+                                from reportlab.lib.pagesizes import A4
+                                from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, PageBreak
+                                from reportlab.lib.units import mm
+                                doc = BaseDocTemplate(preview_path, pagesize=A4,
+                                    leftMargin=20*mm, rightMargin=20*mm,
+                                    topMargin=20*mm, bottomMargin=20*mm)
+                                fframe = Frame(20*mm, 20*mm, A4[0]-40*mm, A4[1]-40*mm, id='f')
+                                doc.addPageTemplates([PageTemplate(id='f',frames=fframe)])
+                                rpt = IPOReport(ipo_data)
+                                story = []
+                                rpt._build_cover(story)
+                                story.append(PageBreak())
+                                rpt._section1(story)
+                                story.append(PageBreak())
+                                story.append(Paragraph(
+                                    '<b>This is a free SNEAK PEEK (2 pages). '
+                                    'Purchase the full report for the complete 30-page institutional analysis '
+                                    'including Investment Thesis, Financial Forecasting, Valuation, '
+                                    'ESG, Management Assessment, and more.</b>',
+                                    ParagraphStyle('PreviewNote', fontSize=11, leading=16,
+                                        textColor=colors.HexColor('#e94560'), alignment=TA_CENTER,
+                                        spaceBefore=40)))
+                                doc.build(story)
+                                with open(preview_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                st.success(" Sneak peek ready! (Cover + Executive Summary)")
+                                st.info("This is a 2-page preview. Purchase the full report for the complete 30-page analysis.")
+                                st.download_button(
+                                    label=" Download Sneak Peek (FREE)",
+                                    data=pdf_bytes,
+                                    file_name=f'{ticker}_Sneak_Peek.pdf',
+                                    mime="application/pdf",
+                                    key=f'dl_free_{report_key}',
+                                )
                         except Exception as e:
-                            st.error(f"Report generation failed: {e}")
+                            st.error(f"Preview generation failed: {e}")
 
         # --- Social Card Generator ---
         social_key = f'social_{ipo.get("company_name", "")}_{ticker}'
